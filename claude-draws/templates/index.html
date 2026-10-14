@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1080, height=1920" />
+    <title>claude-draws</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <!-- the painting engine, helpers, the scene, then any characters (they add themselves to E.CAST) -->
+    <script src="js/engine.js"></script>
+    <script src="js/palms.js"></script>
+    <script src="js/figures.js"></script>
+    <script src="js/scene.js"></script>
+    <!-- characters: e.g. copy examples/zombies.js to js/ and uncomment the next line -->
+    <!-- <script src="js/zombies.js"></script> -->
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1080px;
+        height: 1920px;
+        overflow: hidden;
+        background: #f2eadb;
+      }
+      #root {
+        width: 100%;
+        height: 100%;
+        position: relative;
+        background: #f2eadb;
+      }
+      #world {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Change the length in THREE places: root data-duration, canvas data-duration, DURATION below. -->
+    <div id="root" data-composition-id="main" data-start="0" data-duration="6" data-width="1080" data-height="1920">
+      <canvas id="world" class="clip" data-start="0" data-duration="6" data-track-index="0" data-layout-allow-overflow width="1080" height="1920"></canvas>
+      <!-- music (made by audio/make_score.py). Every <audio> needs an id or it is silent. -->
+      <!-- <audio id="score" src="audio/score.wav" data-start="0" data-duration="6" data-track-index="1" data-volume="1"></audio> -->
+    </div>
+    <script>
+      // Every pixel is painted by the scripts in js/. No images, no video, no fonts.
+      // render(t) is a pure function of time t, so the renderer can ask for any frame
+      // in any order and always gets the same picture (seek-safe, deterministic).
+      const DURATION = 6;
+      const { W, H, ease, clamp, mk } = E;
+      const S = E.SCENE;
+      let PAPER, SCR, MASK, FIELD;
+      const NW = Math.round(W / 4),
+        NH = Math.round(H / 4);
+
+      function build() {
+        PAPER = E.makePaper();
+        S.build();
+        // The intro reveal: the paint spreads out from one point like water on paper.
+        // FIELD holds, for every point of the page, WHEN the paint reaches it (0..1):
+        // distance from the start point + a little noise for a ragged wet edge.
+        const n = E.valueNoise(NW, NH, "spread", 0.014, 3);
+        FIELD = new Float32Array(NW * NH);
+        const [fx, fy] = S.WASH_FROM;
+        for (let y = 0; y < NH; y++)
+          for (let x = 0; x < NW; x++) {
+            const d = Math.hypot((x - NW * fx) / NW, (y - NH * fy) / NH) / 0.75;
+            FIELD[y * NW + x] = 0.74 * d + 0.26 * n[y * NW + x];
+          }
+        SCR = mk(W, H);
+        MASK = mk(NW, NH);
+      }
+
+      // keep only the part of canvas c that the paint has reached at progress p
+      function maskInto(c, p, soft) {
+        const mg = MASK.getContext("2d");
+        const id = mg.createImageData(NW, NH);
+        for (let i = 0; i < NW * NH; i++) id.data[i * 4 + 3] = clamp((p - FIELD[i]) / soft) * 255;
+        mg.putImageData(id, 0, 0);
+        const g = c.getContext("2d");
+        g.setTransform(1, 0, 0, 1, 0, 0);
+        g.globalAlpha = 1;
+        g.globalCompositeOperation = "destination-in";
+        g.imageSmoothingQuality = "high";
+        g.drawImage(MASK, 0, 0, W, H);
+        g.globalCompositeOperation = "source-over";
+      }
+
+      function render(t) {
+        const g = document.getElementById("world").getContext("2d");
+        g.setTransform(1, 0, 0, 1, 0, 0);
+        g.globalAlpha = 1;
+        g.globalCompositeOperation = "source-over";
+        g.drawImage(PAPER.paper, 0, 0);
+        const pW = ease(t, S.WASH[0], S.WASH[1]);
+        if (pW < 1) {
+          // intro: blank paper -> ink lines draw themselves -> paint spreads in underneath
+          if (pW > 0) {
+            const sg = SCR.getContext("2d");
+            sg.setTransform(1, 0, 0, 1, 0, 0);
+            sg.clearRect(0, 0, W, H);
+            S.draw(sg, t, { noInk: true });
+            maskInto(SCR, pW * 1.3 - 0.1, 0.09);
+            g.drawImage(SCR, 0, 0);
+          }
+          S.drawInk(g, t);
+        } else S.draw(g, t);
+        // paper grain over everything (multiply), so paint and ink sit IN the paper
+        g.setTransform(1, 0, 0, 1, 0, 0);
+        g.globalAlpha = 1;
+        g.globalCompositeOperation = "multiply";
+        g.drawImage(PAPER.grain, 0, 0);
+        g.globalCompositeOperation = "source-over";
+      }
+
+      build();
+      // one paused GSAP timeline drives a clock; HyperFrames seeks it frame by frame
+      const tl = gsap.timeline({ paused: true });
+      const clock = { t: 0 };
+      tl.to(clock, { t: DURATION, duration: DURATION, ease: "none", onUpdate: () => render(clock.t) }, 0);
+      render(0);
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>

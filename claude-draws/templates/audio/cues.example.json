@@ -1,0 +1,17 @@
+{
+  "length": 24,
+  "tempo": 76,
+  "cues": [
+    { "at": 0.0, "mood": "gentle", "key": "D major" },
+    { "at": 3.0, "mood": "storm", "key": "B minor" },
+    { "at": 9.0, "mood": "hopeful", "key": "D major" },
+    { "at": 15.0, "mood": "lift" },
+    { "at": 16.5, "mood": "big", "key": "D major" },
+    { "at": 22.0, "mood": "ending", "key": "D major" }
+  ],
+  "hits": [
+    { "at": 6.1, "type": "thunder" },
+    { "at": 6.1, "type": "swell" },
+    { "at": 16.5, "type": "crash" }
+  ]
+}
